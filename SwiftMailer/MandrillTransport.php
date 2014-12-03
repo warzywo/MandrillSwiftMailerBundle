@@ -11,29 +11,29 @@ use \Swift_Mime_Message;
 use \Swift_Transport;
 use \Swift_Attachment;
 
-class MandrillTransport implements Swift_Transport {
-    
+class MandrillTransport implements Swift_Transport
+{
     protected $dispatcher;
-	private $mandrill;
-    
-    protected $started  = false;
+    private $mandrill;
+
+    protected $started = false;
 
     /**
      * @param Swift_Events_EventDispatcher $dispatcher
      */
-    public function __construct(Swift_Events_EventDispatcher $dispatcher) {
+    public function __construct(Swift_Events_EventDispatcher $dispatcher)
+    {
         $this->dispatcher = $dispatcher;
     }
-       
+
     public function isStarted()
     {
         return $this->started;
     }
-    
+
     public function start()
     {
-		$this->started = true;
-
+        $this->started = true;
     }
 
     public function stop()
@@ -41,10 +41,11 @@ class MandrillTransport implements Swift_Transport {
         $this->started = false;
     }
 
-	public function setApiKey($apiKey){
-		$this->mandrill = new Mandrill($apiKey);
-	}
-	
+    public function setApiKey($apiKey)
+    {
+        $this->mandrill = new Mandrill($apiKey);
+    }
+
     /**
      * @param Swift_Mime_Message $message
      * @param null $failedRecipients
@@ -52,37 +53,36 @@ class MandrillTransport implements Swift_Transport {
      */
     public function send(Swift_Mime_Message $message, &$failedRecipients = NULL)
     {
-        
-		if ($event = $this->dispatcher->createSendEvent($this, $message)) {
+
+        if ($event = $this->dispatcher->createSendEvent($this, $message)) {
             $this->dispatcher->dispatchEvent($event, 'beforeSendPerformed');
             if ($event->bubbleCancelled()) {
                 return 0;
             }
         }
-		
+
         $send_count = 0;
 
-		$mandrillMessageData = $this->getMandrillMessage($message);
-		
+        $mandrillMessageData = $this->getMandrillMessage($message);
+
         try {
             $result = $this->mandrill->messages->send($mandrillMessageData);
-			
-			foreach($result as $item){
-				if($item['status'] == 'sent'){
-					$send_count++;
-				}else{
-					$failedRecipients[] = $item['email'];
-				}
-			}
-			
+
+            foreach ($result as $item) {
+                if ($item['status'] == 'sent') {
+                    $send_count++;
+                } else {
+                    $failedRecipients[] = $item['email'];
+                }
+            }
+
+        } catch (\Exception $e) {
         }
-        catch (\Exception $e){}
 
         if ($event) {
             if ($send_count > 0) {
                 $event->setResult(Swift_Events_SendEvent::RESULT_SUCCESS);
-            }
-            else {
+            } else {
                 $event->setResult(Swift_Events_SendEvent::RESULT_FAILED);
             }
             $this->dispatcher->dispatchEvent($event, 'sendPerformed');
@@ -90,47 +90,47 @@ class MandrillTransport implements Swift_Transport {
 
         return $send_count;
     }
-  
-    public function registerPlugin(Swift_Events_EventListener $plugin) {
-        $this->dispatcher->bindEventListener($plugin);
-    } 
 
-	/**
-	 * So far sends only basic html email and attachments
-	 * 
-	 * https://mandrillapp.com/api/docs/messages.php.html#method-send
-	 * 
-	 * @param Swift_Mime_Message $message
-	 * @return array Mandrill Send Message
-	 */
+    public function registerPlugin(Swift_Events_EventListener $plugin)
+    {
+        $this->dispatcher->bindEventListener($plugin);
+    }
+
+    /**
+     * So far sends only basic html email and attachments
+     *
+     * https://mandrillapp.com/api/docs/messages.php.html#method-send
+     *
+     * @param Swift_Mime_Message $message
+     * @return array Mandrill Send Message
+     */
     protected function getMandrillMessage(Swift_Mime_Message $message)
     {
-		
-		$fromAddresses = $message->getFrom();
-		$formEmails = array_keys($fromAddresses);
-		$toAddresses = $message->getTo();
-        $ccAddresses = $message->getCc();
-		$to = array();
+        $fromAddresses = $message->getFrom();
+        $formEmails = array_keys($fromAddresses);
+        $toAddresses = $message->getTo();
+        $ccAddresses =  $message->getCc() ? $message->getCc() : [];
+        $to = array();
         $attachments = array();
-		
-		foreach($toAddresses as $toEmail => $toName){
-			$to[] = array(
-				'email' => $toEmail,
-				'name' => $toName,
-				'type' => 'to'
-			);
-		}
 
-        foreach($ccAddresses as $ccEmail => $ccName){
+        foreach ($toAddresses as $toEmail => $toName) {
+            $to[] = array(
+                'email' => $toEmail,
+                'name' => $toName,
+                'type' => 'to'
+            );
+        }
+
+        foreach ($ccAddresses as $ccEmail => $ccName) {
             $to[] = array(
                 'email' => $ccEmail,
                 'name' => $ccName,
                 'type' => 'cc'
             );
         }
-        
-        foreach($message->getChildren() as $child){
-            if($child instanceof \Swift_Attachment){
+
+        foreach ($message->getChildren() as $child) {
+            if ($child instanceof \Swift_Attachment) {
                 $attachments[] = array(
                     'type' => $child->getContentType(),
                     'name' => $child->getFilename(),
@@ -139,19 +139,19 @@ class MandrillTransport implements Swift_Transport {
             }
         }
 
-		$mandrillMessage = array(
-			'html' => $message->getBody(),
-			'subject' => $message->getSubject(),
-			'from_email' => $formEmails[0],
-			'from_name' => $fromAddresses[$formEmails[0]],
-			'to' => $to,
-		);
-        
-        if(count($attachments) > 0){
+        $mandrillMessage = array(
+            'html' => $message->getBody(),
+            'subject' => $message->getSubject(),
+            'from_email' => $formEmails[0],
+            'from_name' => $fromAddresses[$formEmails[0]],
+            'to' => $to,
+        );
+
+        if (count($attachments) > 0) {
             $mandrillMessage['attachments'] = $attachments;
         }
-		
-        return $mandrillMessage;        
+
+        return $mandrillMessage;
     }
 
     /**
@@ -159,7 +159,8 @@ class MandrillTransport implements Swift_Transport {
      * @param string $mime_type
      * @return null|\Swift_Mime_MimeEntity
      */
-    protected function getMIMEPart(Swift_Mime_Message $message, $mime_type) {
+    protected function getMIMEPart(Swift_Mime_Message $message, $mime_type)
+    {
         $html_part = NULL;
         foreach ($message->getChildren() as $part) {
             if (strpos($part->getContentType(), 'text/html') === 0)
